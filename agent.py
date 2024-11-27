@@ -17,6 +17,8 @@ class Car(Agent):
         """
         super().__init__(unique_id, model)
         self.direction = direction
+        self.objective = objective
+        print(self.objective.pos) # Debugging
 
     def move(self):
         """ 
@@ -27,15 +29,6 @@ class Car(Agent):
         around = self.model.grid.get_neighborhood(self.pos, moore=True, include_center=False)
         
         x, y = self.pos  # Current position of the agent
-        
-        # Select a random destination agent location
-        destination_agents = [agent for agent in self.model.schedule.agents if isinstance(agent, Destination)] # Collect all Destination agents
-
-        if destination_agents:  # Ensure there are destinations in the grid
-            selected_destination = random.choice(destination_agents)  # Pick a random destination
-            self.objective = selected_destination.pos  # Set the destination's position as the objective
-        else:
-            self.objective = None  # No destinations available, handle this case if needed
         
         # Check if the car is currently on a Traffic_Light
         current_cell_agents = self.model.grid.get_cell_list_contents(self.pos)
@@ -105,20 +98,21 @@ class Car(Agent):
                 for agent in cell_agents:
                     if isinstance(agent, Road) and agent.direction in valid_directions[idx]:
                         valid_moves.append(move)
-                        print("Valid move: ", move)
-                        break  # Stop checking this cell if a valid move is found
-                    elif isinstance(agent, Destination):  # Allow any direction to a Destination
+                        break
+                    elif isinstance(agent, Destination) and agent.pos == self.objective.pos:  # Allow any direction to a Destination
                         valid_moves.append(move)
-                        print("Valid move: ", move)
                         break
                     elif isinstance(agent, Traffic_Light) and agent.state is True and idx == 0:  # Allow movement if the Traffic_Light is green and is directly in front of the car
                         valid_moves.append(move)
-                        print("Valid move: ", move)
                         break
         
         # Move to a valid random cell
         if valid_moves:
             new_position = random.choice(valid_moves)  # Choose a random position from valid moves
+            if self.objective.pos in valid_moves: # If objective in valid moves move to it (Delete later when implementing A*)
+                new_position = self.objective.pos
+            
+            print("destination: ", self.objective.pos, "current: ", self.pos, "new: ", new_position) # Debugging
             
             # Move the agent to the new position
             self.model.grid.move_agent(self, new_position)

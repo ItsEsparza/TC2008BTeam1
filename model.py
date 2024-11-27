@@ -2,6 +2,7 @@ from mesa import Model
 from mesa.time import RandomActivation
 from mesa.space import MultiGrid
 from agent import *
+from random import choice
 import json
 
 class CityModel(Model):
@@ -17,6 +18,7 @@ class CityModel(Model):
         dataDictionary = json.load(open("city_files/mapDictionary.json"))
 
         self.traffic_lights = []
+        self.destinations = []
 
         # Load the map file. The map file is a text file where each character represents an agent.
         with open('city_files/2024_base.txt') as baseFile:
@@ -47,6 +49,7 @@ class CityModel(Model):
                     elif col == "D":
                         agent = Destination(f"d_{r*self.width+c}", self)
                         self.grid.place_agent(agent, (c, self.height - r - 1))
+                        self.destinations.append(agent)
 
         self.num_agents = N
         
@@ -58,7 +61,7 @@ class CityModel(Model):
         for (x, y) in self.corners:
             if self.num_agents > 0:
                 road = next((agent for agent in self.grid.get_cell_list_contents((x, y)) if isinstance(agent, Road)), None)
-                agent = Car(f"car_{x}_{y}", self, direction=road.direction)
+                agent = Car(f"car_{x}_{y}", self, direction=road.direction, objective=choice(self.destinations))
                 self.grid.place_agent(agent, (x, y))
                 self.schedule.add(agent)
                 self.num_agents -= 1
@@ -80,7 +83,7 @@ class CityModel(Model):
             road = next((agent for agent in self.grid.get_cell_list_contents((x, y)) if isinstance(agent, Road)), None)
             if road:
                 # Spawn a car at the selected corner
-                agent = Car(f"car_{x}_{y}_{current_step}", self, direction=road.direction)
+                agent = Car(f"car_{x}_{y}_{current_step}", self, direction=road.direction, objective=choice(self.destinations))
                 self.grid.place_agent(agent, (x, y))
                 self.schedule.add(agent)
                 self.num_agents -= 1

@@ -8,7 +8,7 @@ class Car(Agent):
         unique_id: Agent's ID 
         direction: Randomly chosen direction chosen from one of eight directions
     """
-    def __init__(self, unique_id, model, direction = "Left"):
+    def __init__(self, unique_id, model, direction = "Left", objective = None):
         """
         Creates a new random agent.
         Args:
@@ -27,6 +27,19 @@ class Car(Agent):
         around = self.model.grid.get_neighborhood(self.pos, moore=True, include_center=False)
         
         x, y = self.pos  # Current position of the agent
+        
+        # Select a random destination agent location
+        destination_agents = [agent for agent in self.model.schedule.agents if isinstance(agent, Destination)] # Collect all Destination agents
+
+        if destination_agents:  # Ensure there are destinations in the grid
+            selected_destination = random.choice(destination_agents)  # Pick a random destination
+            self.objective = selected_destination.pos  # Set the destination's position as the objective
+        else:
+            self.objective = None  # No destinations available, handle this case if needed
+        
+        # Check if the car is currently on a Traffic_Light
+        current_cell_agents = self.model.grid.get_cell_list_contents(self.pos)
+        is_on_traffic_light = any(isinstance(agent, Traffic_Light) for agent in current_cell_agents)
         
         # Define potential moves based on the car's current direction
         if self.direction == "Left":
@@ -48,7 +61,7 @@ class Car(Agent):
             ]
             valid_directions = [
                 ["Right", "Up", "Down"],
-                ["Left", "Up"],
+                ["Right", "Up"],
                 ["Right", "Down"],
             ]
         elif self.direction == "Up":
@@ -80,21 +93,27 @@ class Car(Agent):
             if move in around:  # Check if the move is within bounds
                 # Get all agents in the cell
                 cell_agents = self.model.grid.get_cell_list_contents(move)
-                
                 # Ensure no other Car is already in the cell
                 if any(isinstance(agent, Car) for agent in cell_agents):
                     continue  # Skip this move if a Car is present
+                
+                # Prevent front movement to another Traffic_Light if currently on a Traffic_Light
+                if idx == 0 and is_on_traffic_light and any(isinstance(agent, Traffic_Light) for agent in cell_agents):
+                    continue  # Skip front move if it leads to a Traffic_Light
                 
                 # Check if the cell contains valid agents and the direction aligns
                 for agent in cell_agents:
                     if isinstance(agent, Road) and agent.direction in valid_directions[idx]:
                         valid_moves.append(move)
+                        print("Valid move: ", move)
                         break  # Stop checking this cell if a valid move is found
                     elif isinstance(agent, Destination):  # Allow any direction to a Destination
                         valid_moves.append(move)
+                        print("Valid move: ", move)
                         break
-                    elif isinstance(agent, Traffic_Light) and agent.state is True:
+                    elif isinstance(agent, Traffic_Light) and agent.state is True and idx == 0:  # Allow movement if the Traffic_Light is green and is directly in front of the car
                         valid_moves.append(move)
+                        print("Valid move: ", move)
                         break
         
         # Move to a valid random cell

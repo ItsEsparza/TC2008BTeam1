@@ -20,43 +20,86 @@ class Car(Agent):
 
     def move(self):
         """ 
-        Determines if the agent can move in the direction that was chosen
-        """        
-        # Store all cells around
+        Determines if the agent can move in the direction that was chosen.
+        Enforces valid traffic flow based on direction and position relative to the car.
+        """
+        # Store all cells around the agent's current position
         around = self.model.grid.get_neighborhood(self.pos, moore=True, include_center=False)
         
         x, y = self.pos  # Current position of the agent
         
-        #Possible movements
+        # Define potential moves based on the car's current direction
         if self.direction == "Left":
-            potential_moves = [(x - 1, y), (x - 1, y + 1), (x - 1, y - 1)]
+            potential_moves = [
+                (x - 1, y),
+                (x - 1, y + 1),
+                (x - 1, y - 1),
+            ]
+            valid_directions = [
+                ["Left", "Up", "Down"],
+                ["Left", "Up"],
+                ["Left", "Down"],
+            ]
         elif self.direction == "Right":
-            potential_moves = [(x + 1, y), (x + 1, y + 1), (x + 1, y - 1)]
+            potential_moves = [
+                (x + 1, y),
+                (x + 1, y + 1),
+                (x + 1, y - 1),
+            ]
+            valid_directions = [
+                ["Right", "Up", "Down"],
+                ["Left", "Up"],
+                ["Right", "Down"],
+            ]
         elif self.direction == "Up":
-            potential_moves = [(x, y + 1), (x + 1, y + 1), (x - 1, y + 1)]
+            potential_moves = [
+                (x, y + 1),
+                (x + 1, y + 1),
+                (x - 1, y + 1),
+            ]
+            valid_directions = [
+                ["Up", "Left", "Right"],
+                ["Up", "Right"],
+                ["Up", "Left"],
+            ]
         elif self.direction == "Down":
-            potential_moves = [(x, y - 1), (x + 1, y - 1), (x - 1, y - 1)]
-            
-        # Filter valid moves (Green light, Road or Destination)
+            potential_moves = [
+                (x, y - 1),
+                (x + 1, y - 1),
+                (x - 1, y - 1),
+            ]
+            valid_directions = [
+                ["Down", "Left", "Right"],
+                ["Down", "Right"],
+                ["Down", "Left"],
+            ]
+        
+        # Filter valid moves (Green light, Road or Destination) and enforce direction rules
         valid_moves = []
-        for move in potential_moves:
+        for idx, move in enumerate(potential_moves):
             if move in around:  # Check if the move is within bounds
                 # Get all agents in the cell
                 cell_agents = self.model.grid.get_cell_list_contents(move)
                 
-                # Check if the cell contains valid agents
+                # Ensure no other Car is already in the cell
+                if any(isinstance(agent, Car) for agent in cell_agents):
+                    continue  # Skip this move if a Car is present
+                
+                # Check if the cell contains valid agents and the direction aligns
                 for agent in cell_agents:
-                    if isinstance(agent, (Road, Destination)) or (isinstance(agent, Traffic_Light) and agent.state is True):
+                    if isinstance(agent, Road) and agent.direction in valid_directions[idx]:
                         valid_moves.append(move)
-                        break  # No need to check further if one valid agent is found
+                        break  # Stop checking this cell if a valid move is found
+                    elif isinstance(agent, Destination):  # Allow any direction to a Destination
+                        valid_moves.append(move)
+                        break
+                    elif isinstance(agent, Traffic_Light) and agent.state is True:
+                        valid_moves.append(move)
+                        break
         
-        # Update possible_moves with valid moves
-        possible_moves = valid_moves
-        
-        # Move to a valid random cell (TODO: Implement A* algorithm)
-        # If there are valid moves, choose one randomly and move
-        if possible_moves:
-            new_position = random.choice(possible_moves)  # Choose a random position from valid moves
+        # Move to a valid random cell
+        if valid_moves:
+            new_position = random.choice(valid_moves)  # Choose a random position from valid moves
             
             # Move the agent to the new position
             self.model.grid.move_agent(self, new_position)
@@ -69,11 +112,11 @@ class Car(Agent):
                 if isinstance(agent, Road):  # Check if it's a Road agent
                     self.direction = agent.direction  # Copy the direction from the Road agent
                     break  # Update direction only once
-                elif isinstance(agent, Destination):  # Check if it's a Destination agent, if so remove from the grid
+                elif isinstance(agent, Destination):  # Check if it's a Destination agent
                     self.model.grid.remove_agent(self)
                     self.model.schedule.remove(self)
                     break
-        
+
 
     def step(self):
         """ 

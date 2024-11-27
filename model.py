@@ -71,7 +71,6 @@ class CityModel(Model):
 
         # Spawn a new car every 10 steps
         if current_step > 0 and current_step % 10 == 0:
-            print(f"Spawning a car at step {current_step}")
             
             # Get the current corner and increment `i`
             x, y = self.corners[self.i]

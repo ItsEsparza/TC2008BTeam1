@@ -200,6 +200,7 @@ class Car(Agent):
                 break  # Update direction only once
             
             elif isinstance(agent, Destination):  # Check if it's a Destination agent
+                self.model.cars_reached_destination += 1  # Increment the counter
                 self.model.grid.remove_agent(self)  # Remove the car from the grid
                 self.model.schedule.remove(self)  # Remove the car from the schedule
                 break  # If destination is reached, end the movement

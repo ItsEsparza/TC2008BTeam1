@@ -70,13 +70,28 @@ class CarCountTextElement(TextElement):
         car_count = model.get_car_count()
         return f"Number of Cars: {car_count}"
 
+class CarsReachedTextElement(TextElement):
+    """A simple text display for the number of cars that reached their destination."""
+    def __init__(self, model):
+        self.model = model
+        super().__init__()
+
+    def render(self, model):
+        # Get the count of cars that reached their destination
+        cars_reached = model.get_cars_reached_destination()
+        return f"Cars Reached Destination: {cars_reached}"
+
 # Create an instance of the CarCountTextElement
 car_count_text = CarCountTextElement(model=None)  # Initially no model is passed
+cars_reached_text = CarsReachedTextElement(model=None)
+
+def update_cars_reached_text(model):
+    cars_reached_text.model = model  # Set the model reference
 
 # Create the server with the grid and the car count text
 server = ModularServer(
     CityModel,
-    [grid, car_count_text],  # Add the CarCountTextElement here
+    [grid, car_count_text, cars_reached_text],  # Add the CarsReachedTextElement here
     "Traffic Base",
     model_params
 )

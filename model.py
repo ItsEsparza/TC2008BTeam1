@@ -8,10 +8,9 @@ import json
 
 class CityModel(Model):
     """ 
-        Creates a model based on a city map.
-
-        Args:
-            N: Number of agents in the simulation
+    Creates a model based on a city map.
+    Args:
+        N: Number of agents in the simulation
     """
     def __init__(self, N):
         # Load the map dictionary. The dictionary maps the characters in the map file to the corresponding agent.
@@ -19,8 +18,9 @@ class CityModel(Model):
 
         self.traffic_lights = []
         self.destinations = []
+        self.cars_reached_destination = 0  # New counter for cars reaching their objective
 
-        # Load the map file. The map file is a text file where each character represents an agent.
+        # Load the map file
         with open('city_files/2024_base.txt') as baseFile:
             lines = baseFile.readlines()
             self.width = len(lines[0])-1
@@ -73,12 +73,16 @@ class CityModel(Model):
 
         # DataCollector: Collect the number of cars in the model at each step
         self.datacollector = DataCollector(
-            model_reporters={"Car Count": self.get_car_count}  # Changed to model_reporters
+            model_reporters={"Car Count": self.get_car_count, "Cars Reached": self.get_cars_reached_destination}
         )
 
     def get_car_count(self):
         """Count the number of cars currently in the grid."""
         return sum(1 for agent in self.schedule.agents if isinstance(agent, Car))
+
+    def get_cars_reached_destination(self):
+        """Count the number of cars that have reached their destination."""
+        return self.cars_reached_destination
 
     def spawnCars(self):
         # Get the current step
@@ -108,4 +112,4 @@ class CityModel(Model):
 
     def get_collected_data(self):
         """Retrieve the collected data (number of cars at each step)."""
-        return self.datacollector.get_model_vars_dataframe()  # Changed to get model vars
+        return self.datacollector.get_model_vars_dataframe()

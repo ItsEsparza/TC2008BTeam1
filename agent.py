@@ -18,6 +18,9 @@ class Car(Agent):
         super().__init__(unique_id, model)
         self.direction = direction
         self.objective = objective
+        self.path_Found = False
+        self.moveIndex = 0
+        self.path = []
         
     def calculate_distances(self, pos_1, pos_2):
         x1, y1 = pos_1
@@ -31,12 +34,12 @@ class Car(Agent):
         possible_moves = []
         valid_directions = []
         valid_moves = []
-        # Get all agents in the cell
-        cell_agents = self.model.grid.get_cell_list_contents(move)
         
-        around = self.model.grid.get_neighborhood(position, moore=True, include_center=False) # Used to check if the move is within bounds
+        # Get the neighborhood of the current position (around the current cell)
+        around = self.model.grid.get_neighborhood(position, moore=True, include_center=False)
         x, y = position
 
+        # Define potential moves based on the current direction
         if direction == "Left":
             potential_moves = [
                 (x - 1, y),
@@ -82,24 +85,30 @@ class Car(Agent):
                 ["Down", "Left"],
             ]
 
-        # Add moves within bounds and without obstacles to possible moves
-        for move in potential_moves:
-            if move in around and any(isinstance(agent, Obstacle) for agent in self.model.grid.get_cell_list_contents(move)) == False:
-                possible_moves.append(move)
-    
+        # Iterate over each potential move and check conditions
         for idx, move in enumerate(potential_moves):
-            for agent in cell_agents:
-                    if isinstance(agent, Road) and agent.direction in valid_directions[idx]:
-                        valid_moves.append(move)
-                        break
-                    elif isinstance(agent, Destination) and agent.pos == self.objective.pos:  # Allow any direction to a Destination
-                        valid_moves.append(move)
-                        break
-                    elif isinstance(agent, Traffic_Light) and idx == 0:  # Allow movement if the Traffic_Light is green and is directly in front of the car
-                        valid_moves.append(move)
-                        break
-        
-        return possible_moves, valid_directions
+            # Ensure the move is within the grid bounds
+            if not self.model.grid.out_of_bounds(move):
+                # Get all agents in the cell where the move is going
+                cell_agents = self.model.grid.get_cell_list_contents(move)
+                
+                # Check if the move is within bounds and no obstacles are in the way
+                if move in around and not any(isinstance(agent, Obstacle) for agent in cell_agents):
+                    # Now check for valid moves based on agents in the destination cell
+                    for agent in cell_agents:
+                        if isinstance(agent, Road) and agent.direction in valid_directions[idx]:
+                            valid_moves.append(move)
+                            break
+                        elif isinstance(agent, Destination) and agent.pos == self.objective.pos:
+                            # Allow any direction to a Destination
+                            valid_moves.append(move)
+                            break
+                        elif isinstance(agent, Traffic_Light) and idx == 0:
+                            # Allow movement if the Traffic_Light is green and directly in front of the car
+                            valid_moves.append(move)
+                            break
+
+        return valid_moves
     
     def A_star(self):
         """
@@ -107,81 +116,101 @@ class Car(Agent):
         """
         start = self.pos
         end = self.objective.pos
+        starting_direction = self.direction
         open_list = [start]
         closed_list = []
         g_cost = {start: 0}
-        
+        f_cost = {start: self.calculate_distances(start, end)}
+        came_from = {}
+
         while open_list:
-            current = open_list[0]
-            open_list = open_list[1:]
-            closed_list.append(current)
-            
-            if current == end:
-                return True
-            
-            possible_moves, _ = self.possible_moves_f(position=current, direction=self.direction)
-            for move in possible_moves:
-                if move in closed_list:
+            # Get the node with the lowest f_cost
+            current_node = min(open_list, key=lambda node: f_cost[node])
+            # If we reached the destination, reconstruct the path
+            if current_node == end:
+                path = []
+                while current_node in came_from:
+                    path.append(current_node)
+                    current_node = came_from[current_node]
+                path.reverse()  # Reverse path to start from the origin
+                #Reset direction to starting
+                self.direction = starting_direction
+                return path
+
+            open_list.remove(current_node)
+            closed_list.append(current_node)
+
+            # Update the car's direction based on the type of agent it's standing on
+            current_cell_agents = self.model.grid.get_cell_list_contents(current_node)
+            for agent in current_cell_agents:
+                if isinstance(agent, Road):
+                    self.direction = agent.direction  # Update direction to match the road's direction
+                    break  # Stop once we update the direction from a road
+
+            # Explore neighbors (possible moves) with the updated direction
+            for neighbor in self.possible_moves_f(current_node, self.direction):
+                if neighbor in closed_list:
                     continue
-                
-                if move not in open_list:
-                    open_list.append(move)
-                
-                new_g_cost = g_cost[current] + self.calculate_distances(current, move)
-                if move not in g_cost or new_g_cost < g_cost[move]:
-                    g_cost[move] = new_g_cost
-        
-        
+
+                tentative_g_cost = g_cost[current_node] + self.calculate_distances(current_node, neighbor)
+
+                if neighbor not in open_list:
+                    open_list.append(neighbor)
+                elif tentative_g_cost >= g_cost.get(neighbor, float('inf')):
+                    continue
+
+                # This path is the best one to this neighbor so far
+                came_from[neighbor] = current_node
+                g_cost[neighbor] = tentative_g_cost
+                f_cost[neighbor] = g_cost[neighbor] + self.calculate_distances(neighbor, end)
+        return []  # Return an empty list if no path is found
         
     def move(self):
-        """ 
+        """
         Determines if the agent can move in the direction that was chosen.
         Enforces valid traffic flow based on direction and position relative to the car.
         """
+        if self.path_Found == False:
+            self.path = self.A_star()  # Get the path from A*
+            self.path_Found = True
         
+        move = self.path[self.moveIndex]  # Get the current target position from the path
+        cell_agents = self.model.grid.get_cell_list_contents(move)  # Get the agents in the target cell
+
         # Check if the car is currently on a Traffic_Light
         current_cell_agents = self.model.grid.get_cell_list_contents(self.pos)
         is_on_traffic_light = any(isinstance(agent, Traffic_Light) for agent in current_cell_agents)
+
+        # Ensure no other Car is already in the target cell
+        if any(isinstance(agent, Car) for agent in cell_agents):
+            return  # Don't move if another car is in the target cell
+
+        # Handle traffic light rules (if on a traffic light)
+        if is_on_traffic_light:
+            traffic_light = next((agent for agent in current_cell_agents if isinstance(agent, Traffic_Light)), None)
+            if traffic_light and not traffic_light.state:  # If the light is red
+                return  # Don't move
+            
+        self.model.grid.move_agent(self, self.path[self.moveIndex])
+        self.moveIndex += 1  # Increment the move index
         
-        # Filter valid moves (Green light, Road or Destination) and enforce direction rules
-        valid_moves = []
-        potential_moves, valid_directions = self.possible_moves_f(position=self.pos, direction=self.direction)
-        
-            # Ensure no other Car is already in the cell
-            if any(isinstance(agent, Car) for agent in cell_agents):
-                continue  # Skip this move if a Car is present
+        for agent in cell_agents:
+            if isinstance(agent, Road):  # Check if it's a Road agent
+                self.direction = agent.direction  # Copy the direction from the Road agent
+                break  # Update direction only once
             
-            # Prevent front movement to another Traffic_Light if currently on a Traffic_Light
-            if idx == 0 and is_on_traffic_light and any(isinstance(agent, Traffic_Light) for agent in cell_agents):
-                continue  # Skip front move if it leads to a Traffic_Light
-            
-        
-        # Move to a valid random cell
-        if valid_moves:
-            new_position = random.choice(valid_moves)  # Choose a random position from valid moves
-            
-            # Move the agent to the new position
-            self.model.grid.move_agent(self, new_position)
-            
-            # Get the agents in the new position
-            cell_agents = self.model.grid.get_cell_list_contents(new_position)
-            
-            # Update direction based on the Road agent in the new position
-            for agent in cell_agents:
-                if isinstance(agent, Road):  # Check if it's a Road agent
-                    self.direction = agent.direction  # Copy the direction from the Road agent
-                    break  # Update direction only once
-                elif isinstance(agent, Destination):  # Check if it's a Destination agent
-                    self.model.grid.remove_agent(self)
-                    self.model.schedule.remove(self)
-                    break
+            elif isinstance(agent, Destination):  # Check if it's a Destination agent
+                self.model.grid.remove_agent(self)  # Remove the car from the grid
+                self.model.schedule.remove(self)  # Remove the car from the schedule
+                break  # If destination is reached, end the movement
+                    
+                
 
 
     def step(self):
         """ 
         Determines the new direction it will take, and then moves
         """
-        self.A_star()
         self.move()
 
 class Traffic_Light(Agent):

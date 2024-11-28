@@ -88,21 +88,19 @@ class CityModel(Model):
         # Get the current step
         current_step = self.schedule.time
 
-        # Spawn a new car every 10 steps
-        if current_step > 0 and current_step % 10 == 0:
-            
-            # Get the current corner and increment `i`
-            x, y = self.corners[self.i]
-            self.i = (self.i + 1) % len(self.corners)  # Cycle `i` between 0 and 3
+        # Spawn cars every 10 steps
+        if current_step > 0 and current_step % 4 == 0:
+            # Cycle through all corners and spawn cars at each one
+            for i in range(len(self.corners)):
+                x, y = self.corners[i]
 
-            # Check if there's a road at the selected corner
-            road = next((agent for agent in self.grid.get_cell_list_contents((x, y)) if isinstance(agent, Road)), None)
-            if road:
-                # Spawn a car at the selected corner
-                agent = Car(f"car_{x}_{y}_{current_step}", self, direction=road.direction, objective=choice(self.destinations))
-                self.grid.place_agent(agent, (x, y))
-                self.schedule.add(agent)
-                self.num_agents -= 1
+                # Check if there's a road at the selected corner
+                road = next((agent for agent in self.grid.get_cell_list_contents((x, y)) if isinstance(agent, Road)), None)
+                if road:
+                    # Spawn a car at the selected corner
+                    agent = Car(f"car_{x}_{y}_{current_step}", self, direction=road.direction, objective=choice(self.destinations))
+                    self.grid.place_agent(agent, (x, y))
+                    self.schedule.add(agent)
 
     def step(self):
         '''Advance the model by one step.'''

@@ -1,5 +1,5 @@
 from mesa import Agent
-import random
+import random, math
 
 class Car(Agent):
     """
@@ -18,24 +18,26 @@ class Car(Agent):
         super().__init__(unique_id, model)
         self.direction = direction
         self.objective = objective
-        print(self.objective.pos) # Debugging
-
-    def move(self):
-        """ 
-        Determines if the agent can move in the direction that was chosen.
-        Enforces valid traffic flow based on direction and position relative to the car.
+        
+    def calculate_distances(self, pos_1, pos_2):
+        x1, y1 = pos_1
+        x2, y2 = pos_2
+        return math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
+        
+    def possible_moves_f(self, position, direction):
         """
-        # Store all cells around the agent's current position
-        around = self.model.grid.get_neighborhood(self.pos, moore=True, include_center=False)
+        Returns a list of possible moves based on the current direction, grid bounds and buildings.
+        """
+        possible_moves = []
+        valid_directions = []
+        valid_moves = []
+        # Get all agents in the cell
+        cell_agents = self.model.grid.get_cell_list_contents(move)
         
-        x, y = self.pos  # Current position of the agent
-        
-        # Check if the car is currently on a Traffic_Light
-        current_cell_agents = self.model.grid.get_cell_list_contents(self.pos)
-        is_on_traffic_light = any(isinstance(agent, Traffic_Light) for agent in current_cell_agents)
-        
-        # Define potential moves based on the car's current direction
-        if self.direction == "Left":
+        around = self.model.grid.get_neighborhood(position, moore=True, include_center=False) # Used to check if the move is within bounds
+        x, y = position
+
+        if direction == "Left":
             potential_moves = [
                 (x - 1, y),
                 (x - 1, y + 1),
@@ -46,7 +48,7 @@ class Car(Agent):
                 ["Left", "Up"],
                 ["Left", "Down"],
             ]
-        elif self.direction == "Right":
+        elif direction == "Right":
             potential_moves = [
                 (x + 1, y),
                 (x + 1, y + 1),
@@ -57,7 +59,7 @@ class Car(Agent):
                 ["Right", "Up"],
                 ["Right", "Down"],
             ]
-        elif self.direction == "Up":
+        elif direction == "Up":
             potential_moves = [
                 (x, y + 1),
                 (x + 1, y + 1),
@@ -68,7 +70,7 @@ class Car(Agent):
                 ["Up", "Right"],
                 ["Up", "Left"],
             ]
-        elif self.direction == "Down":
+        elif direction == "Down":
             potential_moves = [
                 (x, y - 1),
                 (x + 1, y - 1),
@@ -79,40 +81,84 @@ class Car(Agent):
                 ["Down", "Right"],
                 ["Down", "Left"],
             ]
-        
-        # Filter valid moves (Green light, Road or Destination) and enforce direction rules
-        valid_moves = []
+
+        # Add moves within bounds and without obstacles to possible moves
+        for move in potential_moves:
+            if move in around and any(isinstance(agent, Obstacle) for agent in self.model.grid.get_cell_list_contents(move)) == False:
+                possible_moves.append(move)
+    
         for idx, move in enumerate(potential_moves):
-            if move in around:  # Check if the move is within bounds
-                # Get all agents in the cell
-                cell_agents = self.model.grid.get_cell_list_contents(move)
-                # Ensure no other Car is already in the cell
-                if any(isinstance(agent, Car) for agent in cell_agents):
-                    continue  # Skip this move if a Car is present
-                
-                # Prevent front movement to another Traffic_Light if currently on a Traffic_Light
-                if idx == 0 and is_on_traffic_light and any(isinstance(agent, Traffic_Light) for agent in cell_agents):
-                    continue  # Skip front move if it leads to a Traffic_Light
-                
-                # Check if the cell contains valid agents and the direction aligns
-                for agent in cell_agents:
+            for agent in cell_agents:
                     if isinstance(agent, Road) and agent.direction in valid_directions[idx]:
                         valid_moves.append(move)
                         break
                     elif isinstance(agent, Destination) and agent.pos == self.objective.pos:  # Allow any direction to a Destination
                         valid_moves.append(move)
                         break
-                    elif isinstance(agent, Traffic_Light) and agent.state is True and idx == 0:  # Allow movement if the Traffic_Light is green and is directly in front of the car
+                    elif isinstance(agent, Traffic_Light) and idx == 0:  # Allow movement if the Traffic_Light is green and is directly in front of the car
                         valid_moves.append(move)
                         break
+        
+        return possible_moves, valid_directions
+    
+    def A_star(self):
+        """
+        A* algorithm to find the shortest path to the destination.
+        """
+        start = self.pos
+        end = self.objective.pos
+        open_list = [start]
+        closed_list = []
+        g_cost = {start: 0}
+        
+        while open_list:
+            current = open_list[0]
+            open_list = open_list[1:]
+            closed_list.append(current)
+            
+            if current == end:
+                return True
+            
+            possible_moves, _ = self.possible_moves_f(position=current, direction=self.direction)
+            for move in possible_moves:
+                if move in closed_list:
+                    continue
+                
+                if move not in open_list:
+                    open_list.append(move)
+                
+                new_g_cost = g_cost[current] + self.calculate_distances(current, move)
+                if move not in g_cost or new_g_cost < g_cost[move]:
+                    g_cost[move] = new_g_cost
+        
+        
+        
+    def move(self):
+        """ 
+        Determines if the agent can move in the direction that was chosen.
+        Enforces valid traffic flow based on direction and position relative to the car.
+        """
+        
+        # Check if the car is currently on a Traffic_Light
+        current_cell_agents = self.model.grid.get_cell_list_contents(self.pos)
+        is_on_traffic_light = any(isinstance(agent, Traffic_Light) for agent in current_cell_agents)
+        
+        # Filter valid moves (Green light, Road or Destination) and enforce direction rules
+        valid_moves = []
+        potential_moves, valid_directions = self.possible_moves_f(position=self.pos, direction=self.direction)
+        
+            # Ensure no other Car is already in the cell
+            if any(isinstance(agent, Car) for agent in cell_agents):
+                continue  # Skip this move if a Car is present
+            
+            # Prevent front movement to another Traffic_Light if currently on a Traffic_Light
+            if idx == 0 and is_on_traffic_light and any(isinstance(agent, Traffic_Light) for agent in cell_agents):
+                continue  # Skip front move if it leads to a Traffic_Light
+            
         
         # Move to a valid random cell
         if valid_moves:
             new_position = random.choice(valid_moves)  # Choose a random position from valid moves
-            if self.objective.pos in valid_moves: # If objective in valid moves move to it (Delete later when implementing A*)
-                new_position = self.objective.pos
-            
-            print("destination: ", self.objective.pos, "current: ", self.pos, "new: ", new_position) # Debugging
             
             # Move the agent to the new position
             self.model.grid.move_agent(self, new_position)
@@ -135,6 +181,7 @@ class Car(Agent):
         """ 
         Determines the new direction it will take, and then moves
         """
+        self.A_star()
         self.move()
 
 class Traffic_Light(Agent):
